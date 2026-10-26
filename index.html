@@ -160,6 +160,9 @@ details.opts summary{ padding:14px 0; font-weight:700; cursor:pointer; }
 .hist .nt{ margin-top:8px; font-size:14px; font-style:italic; }
 .del{ margin-top:10px; padding:7px 11px; border-radius:10px; background:var(--raised); font-size:13px; font-weight:600; color:var(--muted); }
 .del.arm{ background:var(--warnbg); color:var(--B); }
+.warnline{ margin-top:8px; padding:9px 11px; border-radius:10px; background:var(--warnbg); color:var(--warn); font-size:14px; font-weight:700; }
+.okline{ margin-top:8px; font-size:14px; font-weight:700; color:var(--M); }
+.hist.backup{ border-color:var(--accent); }
 .brow{ display:flex; gap:8px; flex-wrap:wrap; }
 .brow .ghost{ flex:1; }
 .inl{ margin-left:6px; padding:5px 10px; border-radius:8px; background:rgba(128,128,128,.22); font-weight:700; font-size:13px; color:inherit; }
@@ -231,6 +234,16 @@ details.opts summary{ padding:14px 0; font-weight:700; cursor:pointer; }
     });
   }catch(e){}
 })();
+
+/* ---------- offline: service worker (needs the site to be served over https) ---------- */
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => navigator.serviceWorker.ready)
+      .then(() => caches.open('trener-v1').then(c => c.add(location.href)))
+      .catch(() => {});
+  });
+}
 
 /* ---------- icons ---------- */
 const svg = (p, s = 20, w = 2.2) => '<svg viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" stroke="currentColor" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
@@ -491,7 +504,10 @@ function render(keepScroll = true){
   let h = '<div class="top"><h1>Журнал</h1><div class="nav" role="tablist">'
     + '<button class="' + (state.view === 'train' ? 'on' : '') + '" data-view="train">Тренировка</button>'
     + '<button class="' + (state.view === 'history' ? 'on' : '') + '" data-view="history">История</button></div></div>';
-  if(state.view === 'train' && needBackup()) h += '<div class="notice">' + (state.lastBackup ? 'Копию данных давно не делали.' : 'Копии данных ещё нет.') + ' <button class="inl" data-backup="file">Сохранить в файл</button></div>';
+  if(state.view === 'train' && unsavedCount()){
+    const n = unsavedCount();
+    h += '<div class="notice">Копия не сохранена: ' + n + ' ' + plural(n, 'тренировка', 'тренировки', 'тренировок') + ' только на этом телефоне. <button class="inl" data-backup="file">Сохранить в файл</button></div>';
+  }
   if(!state.hasStorage) h += '<div class="notice">Сохранение недоступно: записи останутся только до закрытия страницы. Во вкладке «История» есть резервная копия.</div>';
   h += state.view === 'train' ? trainHTML() : historyHTML();
   root.innerHTML = h;
@@ -593,8 +609,24 @@ function updateProgress(){
   f.style.width = (total ? Math.round(done / total * 100) : 0) + '%';
 }
 
+function backupBlock(){
+  const n = unsavedCount();
+  const status = n
+    ? '<div class="warnline">Копия не сохранена: ' + n + ' ' + plural(n, 'тренировка', 'тренировки', 'тренировок') + ' только на этом телефоне.</div>'
+    : '<div class="okline">Все тренировки в копии.' + (state.lastBackup ? ' Последнее сохранение: ' + fmtDate(new Date(state.lastBackup).toISOString()) : '') + '</div>';
+  return '<div class="hist backup"><div class="hd">Резервная копия</div>' + status
+    + '<div class="sum">В файле хранятся тренировки, история, свои упражнения и настройки.</div>'
+    + '<div class="brow"><button class="ghost" data-backup="file">Сохранить в файл</button>'
+    + '<button class="ghost" data-backup="load">Загрузить из файла</button></div>'
+    + '<input type="file" id="importfile" accept=".json,application/json" hidden>'
+    + '<details class="how"><summary>Копия текстом</summary>'
+    + '<button class="ghost" data-backup="copy">Скопировать данные</button>'
+    + '<textarea id="restore" placeholder="Вставить копию сюда" style="margin-top:10px"></textarea>'
+    + '<button class="ghost" data-backup="restore">Восстановить из текста</button></details></div>';
+}
+
 function historyHTML(){
-  let h = '';
+  let h = backupBlock();
   if(!state.sessions.length) h += '<div class="empty">Здесь появятся сохранённые тренировки.</div>';
   state.sessions.slice().reverse().forEach(s => {
     let sets = 0, vol = 0;
@@ -613,16 +645,6 @@ function historyHTML(){
       + '<ul>' + lines + '</ul>' + (s.note ? '<div class="nt">' + esc(s.note) + '</div>' : '')
       + '<button class="del ' + (state.delArm === s.id ? 'arm' : '') + '" data-del="' + s.id + '">' + (state.delArm === s.id ? 'Нажать ещё раз для удаления' : 'Удалить') + '</button></div>';
   });
-  h += '<div class="hist"><div class="hd">Резервная копия</div>'
-    + '<div class="sum">' + (state.lastBackup ? 'Последняя копия: ' + fmtDate(new Date(state.lastBackup).toISOString()) + '.' : 'Копия ещё не делалась.')
-    + ' В файле хранятся тренировки, история, свои упражнения и настройки.</div>'
-    + '<div class="brow"><button class="ghost" data-backup="file">Сохранить в файл</button>'
-    + '<button class="ghost" data-backup="load">Загрузить из файла</button></div>'
-    + '<input type="file" id="importfile" accept=".json,application/json" hidden>'
-    + '<details class="how"><summary>Копия текстом</summary>'
-    + '<button class="ghost" data-backup="copy">Скопировать данные</button>'
-    + '<textarea id="restore" placeholder="Вставить копию сюда" style="margin-top:10px"></textarea>'
-    + '<button class="ghost" data-backup="restore">Восстановить из текста</button></details></div>';
   return h;
 }
 
@@ -742,10 +764,12 @@ function createCustom(){
 }
 
 /* ---------- backup ---------- */
-const DAY = 86400000;
-function needBackup(){
-  if(state.sessions.length < 3) return false;
-  return !state.lastBackup || Date.now() - state.lastBackup > 14 * DAY;
+function unsavedCount(){ return state.sessions.filter(x => x.id > state.lastBackup).length; }
+function plural(n, one, few, many){
+  const m10 = n % 10, m100 = n % 100;
+  if(m10 === 1 && m100 !== 11) return one;
+  if(m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
 }
 function backupData(){
   return { app:'trener', version:2, exported:new Date().toISOString(), sessions:state.sessions, plans:state.plans, custom:state.custom, intro:state.intro, rest:state.rest };
@@ -759,6 +783,7 @@ function applyBackup(text){
     if(x.plans && x.plans.A && x.plans.B && x.plans.M) state.plans = x.plans;
     if(Array.isArray(x.custom)) state.custom = x.custom;
     state.intro = !!x.intro; if(x.rest) state.rest = x.rest;
+    state.lastBackup = Date.now();
     rebuildLib(); migrate();
     sset('sessions', state.sessions); sset('plans', state.plans); sset('custom', state.custom); saveSettings();
     render(); toast('Данные восстановлены');
@@ -803,7 +828,7 @@ async function finish(){
   await sset('sessions', state.sessions);
   await sset('draft', { inputs:state.inputs, note:'', w:state.w });
   render(false);
-  toast('Тренировка сохранена');
+  toast('Тренировка записана. Копии пока нет');
 }
 function toggleDone(exId, i){
   const ex = LIBMAP[exId];
