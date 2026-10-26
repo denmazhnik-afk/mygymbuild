@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Журнал">
 <meta name="theme-color" content="#eef0f1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Журнал тренировок</title>
 <style>
 :root{
@@ -158,6 +160,9 @@ details.opts summary{ padding:14px 0; font-weight:700; cursor:pointer; }
 .hist .nt{ margin-top:8px; font-size:14px; font-style:italic; }
 .del{ margin-top:10px; padding:7px 11px; border-radius:10px; background:var(--raised); font-size:13px; font-weight:600; color:var(--muted); }
 .del.arm{ background:var(--warnbg); color:var(--B); }
+.brow{ display:flex; gap:8px; flex-wrap:wrap; }
+.brow .ghost{ flex:1; }
+.inl{ margin-left:6px; padding:5px 10px; border-radius:8px; background:rgba(128,128,128,.22); font-weight:700; font-size:13px; color:inherit; }
 .empty{ padding:30px 8px; text-align:center; color:var(--muted); }
 .notice{ background:var(--warnbg); color:var(--warn); border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:14px; font-weight:600; }
 
@@ -208,6 +213,25 @@ details.opts summary{ padding:14px 0; font-weight:700; cursor:pointer; }
 <div id="toast-slot"></div>
 
 <script>
+/* ---------- home screen icon, drawn in the page ---------- */
+(function(){
+  try{
+    const c = document.createElement('canvas'); c.width = c.height = 180;
+    const x = c.getContext('2d'); if(!x) return;
+    x.fillStyle = '#101316'; x.fillRect(0, 0, 180, 180);
+    x.fillStyle = '#2a55e5'; x.beginPath(); x.arc(90, 90, 76, 0, Math.PI * 2); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,.38)'; x.lineWidth = 5; x.beginPath(); x.arc(90, 90, 60, 0, Math.PI * 2); x.stroke();
+    x.strokeStyle = 'rgba(255,255,255,.22)'; x.lineWidth = 3; x.beginPath(); x.arc(90, 90, 42, 0, Math.PI * 2); x.stroke();
+    x.fillStyle = '#101316'; x.beginPath(); x.arc(90, 90, 17, 0, Math.PI * 2); x.fill();
+    const url = c.toDataURL('image/png');
+    ['apple-touch-icon', 'icon'].forEach(rel => {
+      let l = document.querySelector('link[rel="' + rel + '"]');
+      if(!l){ l = document.createElement('link'); l.rel = rel; document.head.appendChild(l); }
+      l.href = url;
+    });
+  }catch(e){}
+})();
+
 /* ---------- icons ---------- */
 const svg = (p, s = 20, w = 2.2) => '<svg viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" stroke="currentColor" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
 const IC = {
@@ -370,7 +394,7 @@ const unitWord = ex => ex.unit === 'sec' ? 'с' : (ex.unit === 'min' ? 'мин' 
 /* ---------- state ---------- */
 const state = {
   view:'train', w:'A', plans:defaultPlans(), custom:[], sessions:[], inputs:{}, note:'',
-  intro:false, rest:90, edit:false, hasStorage:true, delArm:null, resetArm:false,
+  intro:false, rest:90, lastBackup:0, edit:false, hasStorage:true, delArm:null, resetArm:false,
   restEnd:0, restDone:false, pk:null
 };
 rebuildLib();
@@ -394,7 +418,7 @@ async function sset(k, v){
   if(ls){ try{ ls.setItem(KEY(k), JSON.stringify(v)); }catch(e){ console.error(e); } }
 }
 const queueDraft = () => { clearTimeout(draftTimer); draftTimer = setTimeout(() => sset('draft', { inputs:state.inputs, note:state.note, w:state.w }), 400); };
-const saveSettings = () => sset('settings', { intro:state.intro, rest:state.rest });
+const saveSettings = () => sset('settings', { intro:state.intro, rest:state.rest, lastBackup:state.lastBackup });
 const savePlans = () => sset('plans', state.plans);
 
 /* ---------- helpers ---------- */
@@ -467,6 +491,7 @@ function render(keepScroll = true){
   let h = '<div class="top"><h1>Журнал</h1><div class="nav" role="tablist">'
     + '<button class="' + (state.view === 'train' ? 'on' : '') + '" data-view="train">Тренировка</button>'
     + '<button class="' + (state.view === 'history' ? 'on' : '') + '" data-view="history">История</button></div></div>';
+  if(state.view === 'train' && needBackup()) h += '<div class="notice">' + (state.lastBackup ? 'Копию данных давно не делали.' : 'Копии данных ещё нет.') + ' <button class="inl" data-backup="file">Сохранить в файл</button></div>';
   if(!state.hasStorage) h += '<div class="notice">Сохранение недоступно: записи останутся только до закрытия страницы. Во вкладке «История» есть резервная копия.</div>';
   h += state.view === 'train' ? trainHTML() : historyHTML();
   root.innerHTML = h;
@@ -589,10 +614,15 @@ function historyHTML(){
       + '<button class="del ' + (state.delArm === s.id ? 'arm' : '') + '" data-del="' + s.id + '">' + (state.delArm === s.id ? 'Нажать ещё раз для удаления' : 'Удалить') + '</button></div>';
   });
   h += '<div class="hist"><div class="hd">Резервная копия</div>'
-    + '<div class="sum">Скопировать данные и сохранить в заметках. Если записи пропадут, вставить сюда и восстановить.</div>'
+    + '<div class="sum">' + (state.lastBackup ? 'Последняя копия: ' + fmtDate(new Date(state.lastBackup).toISOString()) + '.' : 'Копия ещё не делалась.')
+    + ' В файле хранятся тренировки, история, свои упражнения и настройки.</div>'
+    + '<div class="brow"><button class="ghost" data-backup="file">Сохранить в файл</button>'
+    + '<button class="ghost" data-backup="load">Загрузить из файла</button></div>'
+    + '<input type="file" id="importfile" accept=".json,application/json" hidden>'
+    + '<details class="how"><summary>Копия текстом</summary>'
     + '<button class="ghost" data-backup="copy">Скопировать данные</button>'
     + '<textarea id="restore" placeholder="Вставить копию сюда" style="margin-top:10px"></textarea>'
-    + '<button class="ghost" data-backup="restore">Восстановить из копии</button></div>';
+    + '<button class="ghost" data-backup="restore">Восстановить из текста</button></details></div>';
   return h;
 }
 
@@ -711,6 +741,48 @@ function createCustom(){
   toast('Упражнение добавлено');
 }
 
+/* ---------- backup ---------- */
+const DAY = 86400000;
+function needBackup(){
+  if(state.sessions.length < 3) return false;
+  return !state.lastBackup || Date.now() - state.lastBackup > 14 * DAY;
+}
+function backupData(){
+  return { app:'trener', version:2, exported:new Date().toISOString(), sessions:state.sessions, plans:state.plans, custom:state.custom, intro:state.intro, rest:state.rest };
+}
+function markBackup(){ state.lastBackup = Date.now(); saveSettings(); }
+function applyBackup(text){
+  try{
+    const x = JSON.parse(text);
+    if(!x || !Array.isArray(x.sessions)) throw new Error('bad');
+    state.sessions = x.sessions;
+    if(x.plans && x.plans.A && x.plans.B && x.plans.M) state.plans = x.plans;
+    if(Array.isArray(x.custom)) state.custom = x.custom;
+    state.intro = !!x.intro; if(x.rest) state.rest = x.rest;
+    rebuildLib(); migrate();
+    sset('sessions', state.sessions); sset('plans', state.plans); sset('custom', state.custom); saveSettings();
+    render(); toast('Данные восстановлены');
+  }catch(err){ toast('Не удалось прочитать копию'); }
+}
+function exportFile(){
+  const json = JSON.stringify(backupData(), null, 1);
+  const name = 'trener-' + new Date().toISOString().slice(0, 10) + '.json';
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([json], { type:'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    markBackup(); render(); toast('Файл сохранён');
+  };
+  let file = null;
+  try{ file = new File([json], name, { type:'application/json' }); }catch(e){}
+  if(file && navigator.canShare && navigator.canShare({ files:[file] })){
+    navigator.share({ files:[file], title:'Копия тренировок' })
+      .then(() => { markBackup(); render(); toast('Копия сохранена'); })
+      .catch(err => { if(!err || err.name !== 'AbortError') download(); });
+  } else download();
+}
+
 /* ---------- actions ---------- */
 async function finish(){
   const data = {};
@@ -776,6 +848,11 @@ document.addEventListener('focusin', e => {
 document.addEventListener('change', e => {
   const t = e.target;
   if(t.id === 'intro'){ state.intro = t.checked; saveSettings(); render(); }
+  else if(t.id === 'importfile'){
+    const f = t.files && t.files[0];
+    if(f){ const r = new FileReader(); r.onload = () => applyBackup(String(r.result)); r.onerror = () => toast('Не удалось открыть файл'); r.readAsText(f); }
+    t.value = '';
+  }
   else if(t.id === 'restsel'){ state.rest = Number(t.value); saveSettings(); }
   else if(t.dataset && t.dataset.rng !== undefined){
     const it = planItems()[Number(t.dataset.rng)];
@@ -842,24 +919,16 @@ document.addEventListener('click', e => {
   else if(d.e && state.pk){ state.pk.e = d.e; state.pk.form = false; renderChips(); renderList(); }
   else if(d.add && state.pk){ togglePlanEx(d.add); renderList(); }
   else if(d.backup === 'copy'){
-    const txt = JSON.stringify({ sessions:state.sessions, plans:state.plans, custom:state.custom, intro:state.intro });
-    const ta = $('#restore'); ta.value = txt;
+    const txt = JSON.stringify(backupData());
+    const ta = $('#restore'); ta.value = txt; markBackup();
     if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(txt).then(() => toast('Скопировано')).catch(() => { ta.select(); toast('Выделить текст и скопировать вручную'); });
-    } else { ta.select(); toast('Выделить текст и скопировать вручную'); }
+      const manual = () => { const dt = ta.closest('details'); if(dt) dt.open = true; ta.select(); toast('Выделить текст и скопировать вручную'); };
+      navigator.clipboard.writeText(txt).then(() => toast('Скопировано')).catch(manual);
+    } else { const dt = ta.closest('details'); if(dt) dt.open = true; ta.select(); toast('Выделить текст и скопировать вручную'); }
   }
-  else if(d.backup === 'restore'){
-    try{
-      const x = JSON.parse($('#restore').value);
-      if(!Array.isArray(x.sessions)) throw new Error('bad');
-      state.sessions = x.sessions; migrate();
-      if(x.plans) state.plans = x.plans;
-      if(Array.isArray(x.custom)) state.custom = x.custom;
-      state.intro = !!x.intro; rebuildLib();
-      sset('sessions', state.sessions); sset('plans', state.plans); sset('custom', state.custom); saveSettings();
-      render(); toast('Данные восстановлены');
-    }catch(err){ toast('Не удалось прочитать копию'); }
-  }
+  else if(d.backup === 'restore'){ applyBackup($('#restore').value); }
+  else if(d.backup === 'file'){ exportFile(); }
+  else if(d.backup === 'load'){ const f = $('#importfile'); if(f) f.click(); }
 });
 
 /* ---------- start ---------- */
@@ -880,7 +949,7 @@ function migrate(){
   const s = await sget('sessions'); if(s) state.sessions = s;
   const c = await sget('custom'); if(c) state.custom = c;
   const p = await sget('plans'); if(p && p.A && p.B && p.M) state.plans = p;
-  const st = await sget('settings'); if(st){ state.intro = !!st.intro; if(st.rest) state.rest = st.rest; }
+  const st = await sget('settings'); if(st){ state.intro = !!st.intro; if(st.rest) state.rest = st.rest; if(st.lastBackup) state.lastBackup = st.lastBackup; }
   const d = await sget('draft');
   if(d){ state.inputs = d.inputs || {}; state.note = d.note || ''; }
   rebuildLib();
