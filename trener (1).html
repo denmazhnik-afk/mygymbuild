@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Журнал тренировок</title>
+<style>
+:root{
+  --bg:#e9eaeb; --surface:#f8f8f8; --ink:#1a1d20; --muted:#5d646b; --line:#cdd0d3;
+  --plateA:#1f4fd8; --plateB:#c8372d; --on:#ffffff; --ok:#1d7a46;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#141618; --surface:#1e2124; --ink:#eceeef; --muted:#9aa1a7; --line:#343a3f;
+    --plateA:#6b92ff; --plateB:#f0766b; --on:#0c0d0e; --ok:#4fc17f; }
+}
+body[data-w="A"]{ --accent:var(--plateA); }
+body[data-w="B"]{ --accent:var(--plateB); }
+*{ box-sizing:border-box; }
+html{ -webkit-text-size-adjust:100%; }
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size:16px; line-height:1.4;
+}
+#app{ max-width:560px; margin:0 auto; padding:16px 14px 110px; }
+h1{ font-size:24px; margin:4px 0 12px; font-weight:800; letter-spacing:-0.01em; }
+h2{ font-size:18px; margin:0; font-weight:700; }
+button{ font:inherit; color:inherit; cursor:pointer; }
+button:focus-visible, input:focus-visible, textarea:focus-visible{ outline:3px solid var(--accent); outline-offset:2px; }
+
+.tabs{ display:flex; gap:6px; margin-bottom:14px; }
+.tab{ flex:1; padding:10px; border:0; border-bottom:3px solid var(--line); background:none; font-weight:600; color:var(--muted); }
+.tab.on{ color:var(--ink); border-bottom-color:var(--accent); }
+
+.switch{ display:flex; gap:8px; margin-bottom:10px; }
+.sw{ flex:1; display:flex; align-items:center; justify-content:center; gap:10px; padding:14px 8px;
+  background:var(--surface); border:2px solid var(--line); border-radius:12px; font-weight:700; }
+.sw.on{ border-color:var(--accent); }
+.dot{ width:16px; height:16px; border-radius:50%; display:inline-block; }
+.dot.A{ background:var(--plateA); }
+.dot.B{ background:var(--plateB); }
+
+.intro{ display:flex; align-items:center; gap:10px; margin:6px 2px 14px; color:var(--muted); font-size:15px; }
+.intro input{ width:20px; height:20px; accent-color:var(--accent); }
+
+.card{ background:var(--surface); border:1px solid var(--line); border-left:6px solid var(--accent);
+  border-radius:10px; padding:14px 14px 12px; margin-bottom:12px; }
+.target{ font-weight:700; font-variant-numeric:tabular-nums; color:var(--accent); margin-top:2px; }
+.last{ margin-top:8px; font-size:14px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.hint{ margin-top:4px; font-size:14px; font-weight:600; }
+.tip{ margin-top:4px; font-size:13px; color:var(--muted); }
+
+.set{ display:flex; align-items:center; gap:8px; margin-top:8px; }
+.set .n{ width:16px; color:var(--muted); font-variant-numeric:tabular-nums; text-align:center; }
+.set label{ flex:1; display:flex; align-items:center; gap:5px; min-width:0; }
+.set .u{ font-size:13px; color:var(--muted); white-space:nowrap; }
+select{
+  width:100%; min-width:0; padding:10px 2px; font:inherit; font-size:18px; font-weight:600;
+  font-variant-numeric:tabular-nums; text-align:center; text-align-last:center; color:var(--ink);
+  background:var(--bg); border:1px solid var(--line); border-radius:8px;
+}
+input[type=number], textarea{
+  width:100%; min-width:0; padding:10px 6px; font:inherit; font-size:18px; font-weight:600;
+  font-variant-numeric:tabular-nums; text-align:center; color:var(--ink);
+  background:var(--bg); border:1px solid var(--line); border-radius:8px;
+}
+textarea{ text-align:left; font-size:16px; font-weight:400; resize:vertical; min-height:70px; }
+.ghost{ margin-top:10px; padding:8px 12px; background:none; border:1px solid var(--line); border-radius:8px; font-size:14px; color:var(--muted); }
+
+.notebox{ margin:16px 0 0; }
+.notebox span{ display:block; margin-bottom:6px; font-size:14px; color:var(--muted); }
+
+.bar{ position:fixed; left:0; right:0; bottom:0; padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+  background:var(--bg); border-top:1px solid var(--line); }
+.bar button{ display:block; width:100%; max-width:560px; margin:0 auto; padding:15px; border:0; border-radius:12px;
+  background:var(--accent); color:var(--on); font-weight:800; font-size:17px; }
+
+.notice{ background:var(--surface); border:1px dashed var(--line); border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:14px; color:var(--muted); }
+.toast{ position:fixed; left:50%; bottom:88px; transform:translateX(-50%); background:var(--ink); color:var(--bg);
+  padding:10px 16px; border-radius:20px; font-weight:600; font-size:15px; z-index:5; }
+
+.empty{ padding:28px 8px; text-align:center; color:var(--muted); }
+.hist{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+.hist .top{ display:flex; align-items:center; gap:8px; font-weight:700; }
+.hist .when{ margin-left:auto; font-weight:500; color:var(--muted); font-size:14px; }
+.hist ul{ list-style:none; margin:10px 0 0; padding:0; }
+.hist li{ padding:6px 0; border-top:1px solid var(--line); font-size:14px; }
+.hist li b{ display:block; font-size:15px; }
+.hist li span{ font-variant-numeric:tabular-nums; color:var(--muted); }
+.hist .nt{ margin-top:8px; font-size:14px; font-style:italic; }
+.del{ margin-top:10px; padding:6px 10px; background:none; border:1px solid var(--line); border-radius:8px; font-size:13px; color:var(--muted); }
+.del.arm{ border-color:var(--plateB); color:var(--plateB); }
+</style>
+</head>
+<body data-w="A">
+<div id="app"></div>
+<div id="toast-slot"></div>
+
+<script>
+const PROGRAM = {
+  A: { label: 'Тренировка А', ex: [
+    { id:'a-legpress', name:'Жим ногами', sets:3, lo:10, hi:12, tip:'Таз прижат к спинке, колени не заваливаются внутрь.' },
+    { id:'a-chest', name:'Жим от груди в тренажёре', sets:3, lo:8, hi:12, tip:'Плечи вниз, лопатки сведены и прижаты к спинке. Если правая лопатка уходит, вес тяжеловат.' },
+    { id:'a-lat', name:'Тяга верхнего блока', sets:3, lo:8, hi:12, tip:'Локти тянуть вниз к рёбрам, правое плечо не поднимать к уху.' },
+    { id:'a-row', name:'Рычажная тяга с упором грудью', sets:3, lo:10, hi:12, tip:'Грудь на подушке, без раскачки, лопатки сводятся в конце движения.' },
+    { id:'a-curl', name:'Сгибания на бицепс сидя со спинкой', sets:2, lo:10, hi:12, tip:'Локти на месте, опускать медленно.' },
+    { id:'a-tri', name:'Разгибания на трицепс на блоке', sets:2, lo:10, hi:12, tip:'Локти прижаты к корпусу.' },
+    { id:'a-face', name:'Тяга каната к лицу или обратные разведения', sets:2, lo:12, hi:15, tip:'Лёгкий вес. Плечи вниз, без подтягивания к ушам.' },
+    { id:'a-plank', name:'Планка', sets:3, lo:30, hi:45, unit:'sec', noWeight:true, tip:'Спина ровная, таз не провисает. Вносить секунды.' }
+  ]},
+  B: { label: 'Тренировка Б', ex: [
+    { id:'b-legext', name:'Разгибания ног в тренажёре', sets:3, lo:10, hi:12, tip:'Без рывков, наверху короткая пауза.' },
+    { id:'b-incline', name:'Жим от груди на наклонной в тренажёре', sets:3, lo:8, hi:12, tip:'Плечи вниз, спина и таз плотно к спинке.' },
+    { id:'b-dbrow', name:'Тяга гантели одной рукой с упором на скамью', sets:3, lo:10, hi:12, uni:true, tip:'Начинать со слабой стороны, на другой столько же повторений. Л и П: повторения слева и справа.' },
+    { id:'b-press', name:'Жим от плеч в тренажёре с упором спиной', sets:3, lo:8, hi:12, tip:'Спина прижата, правое плечо не уходит вверх к уху.' },
+    { id:'b-legcurl', name:'Сгибания ног лёжа или сидя', sets:3, lo:10, hi:12, tip:'Медленно возвращать вес.' },
+    { id:'b-hammer', name:'Молотки сидя', sets:2, lo:10, hi:12, tip:'Локти на месте, плечи опущены.' },
+    { id:'b-tri', name:'Разгибания на трицепс на блоке', sets:2, lo:10, hi:12, tip:'Локти прижаты к корпусу.' },
+    { id:'b-face', name:'Тяга каната к лицу или обратные разведения', sets:2, lo:12, hi:15, tip:'Лёгкий вес. Плечи вниз, без подтягивания к ушам.' }
+  ]}
+};
+
+const state = { view:'train', w:'A', intro:false, sessions:[], inputs:{}, note:'', hasStorage:true, delArm:null };
+const root = document.getElementById('app');
+let draftTimer, toastTimer;
+
+/* storage */
+const mem = {};
+let ls = null;
+try{ localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); ls = localStorage; }catch(e){ ls = null; }
+const KEY = k => 'trener:' + k;
+async function sget(k){
+  if(window.storage){
+    try{ const r = await window.storage.get(k, false); if(r) return JSON.parse(r.value); }catch(e){}
+  }
+  if(ls){
+    try{ const r = ls.getItem(KEY(k)); if(r) return JSON.parse(r); }catch(e){}
+  }
+  return k in mem ? mem[k] : null;
+}
+async function sset(k, v){
+  mem[k] = v;
+  if(window.storage){
+    try{ await window.storage.set(k, JSON.stringify(v), false); }catch(e){ console.error('Storage error', e); }
+  }
+  if(ls){
+    try{ ls.setItem(KEY(k), JSON.stringify(v)); }catch(e){ console.error('Local storage error', e); }
+  }
+}
+function queueDraft(){
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(()=> sset('draft', { inputs:state.inputs, note:state.note, w:state.w }), 400);
+}
+
+/* helpers */
+const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? 0 : n; };
+const setsFor = ex => state.intro ? Math.min(2, ex.sets) : ex.sets;
+const fmtDate = iso => new Date(iso).toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+const other = k => k === 'A' ? 'B' : 'A';
+const WEIGHTS = []; for(let v = 2.5; v <= 200; v += 2.5) WEIGHTS.push(v);
+const REPS = []; for(let v = 1; v <= 40; v++) REPS.push(v);
+const SECS = []; for(let v = 5; v <= 180; v += 5) SECS.push(v);
+
+function lastFor(exId){
+  for(let i = state.sessions.length - 1; i >= 0; i--){
+    const d = state.sessions[i].data[exId];
+    if(d && d.length) return { date: state.sessions[i].date, sets: d };
+  }
+  return null;
+}
+function repsOf(ex, s){
+  if(ex.uni){ const v = [num(s.rl), num(s.rr)].filter(n => n > 0); return v.length ? Math.min(...v) : 0; }
+  return num(s.r);
+}
+function fmtSets(ex, sets){
+  if(ex.unit === 'sec') return sets.map(s => num(s.r)).join(', ') + ' с';
+  return sets.map(s => {
+    const w = num(s.w);
+    const r = ex.uni ? (num(s.rl) + '/' + num(s.rr)) : num(s.r);
+    return (w ? w + '×' : '') + r;
+  }).join(', ');
+}
+function hint(ex, last){
+  if(!last) return 'Первый раз: взять вес, с которым останется запас в 2-3 повторения.';
+  const reps = last.sets.map(s => repsOf(ex, s)).filter(n => n > 0);
+  if(!reps.length) return '';
+  const min = Math.min(...reps);
+  if(ex.unit === 'sec') return min >= ex.hi ? 'Держал до ' + ex.hi + ' с: можно на 5 секунд дольше.' : 'Цель: ' + ex.lo + '-' + ex.hi + ' с.';
+  if(min >= ex.hi) return 'Все подходы на ' + ex.hi + ': можно прибавить вес и начать с ' + ex.lo + '.';
+  if(min < ex.lo) return 'Было ниже ' + ex.lo + ': оставить вес или чуть снизить.';
+  return 'Оставить вес и добавить повторение там, где получится.';
+}
+function toast(msg){
+  clearTimeout(toastTimer);
+  document.getElementById('toast-slot').innerHTML = '<div class="toast" role="status">' + msg + '</div>';
+  toastTimer = setTimeout(()=>{ document.getElementById('toast-slot').innerHTML = ''; }, 2200);
+}
+
+/* render */
+function render(){
+  document.body.dataset.w = state.w;
+  let h = '<h1>Журнал тренировок</h1>';
+  if(!state.hasStorage) h += '<div class="notice">Сохранение недоступно: записи останутся только до закрытия страницы. Во вкладке «История» есть резервная копия.</div>';
+  h += '<div class="tabs" role="tablist">'
+    + '<button class="tab ' + (state.view === 'train' ? 'on' : '') + '" data-view="train">Тренировка</button>'
+    + '<button class="tab ' + (state.view === 'history' ? 'on' : '') + '" data-view="history">История</button></div>';
+  h += state.view === 'train' ? trainHTML() : historyHTML();
+  root.innerHTML = h;
+}
+
+function trainHTML(){
+  const p = PROGRAM[state.w];
+  let h = '<div class="switch">' + ['A','B'].map(k =>
+    '<button class="sw ' + (k === state.w ? 'on' : '') + '" data-w="' + k + '"><span class="dot ' + k + '"></span>' + PROGRAM[k].label + '</button>'
+  ).join('') + '</div>';
+  h += '<label class="intro"><input type="checkbox" id="intro" ' + (state.intro ? 'checked' : '') + '> Вводные недели: по 2 подхода</label>';
+
+  p.ex.forEach(ex => {
+    const last = lastFor(ex.id);
+    const n = setsFor(ex);
+    h += '<section class="card"><h2>' + ex.name + '</h2>'
+      + '<div class="target">' + n + ' × ' + ex.lo + '-' + ex.hi + (ex.unit === 'sec' ? ' с' : '') + '</div>';
+    if(last) h += '<div class="last">Прошлый раз, ' + fmtDate(last.date) + ': ' + fmtSets(ex, last.sets) + '</div>';
+    h += '<div class="hint">' + hint(ex, last) + '</div><div class="tip">' + ex.tip + '</div>';
+    for(let i = 0; i < n; i++){
+      const cur = (state.inputs[ex.id] && state.inputs[ex.id][i]) || {};
+      const ph = last ? (last.sets[i] || last.sets[last.sets.length - 1]) : {};
+      const f = (field, unit, label) => {
+        const list = field === 'w' ? WEIGHTS : (ex.unit === 'sec' ? SECS : REPS);
+        const curV = cur[field] ?? '';
+        const vals = list.slice();
+        if(curV !== '' && num(curV) > 0 && !vals.includes(num(curV))){ vals.push(num(curV)); vals.sort((a, b) => a - b); }
+        return '<label>' + (label ? '<span class="u">' + label + '</span>' : '')
+          + '<select data-ex="' + ex.id + '" data-i="' + i + '" data-f="' + field + '" data-ph="' + (ph[field] ?? '') + '" '
+          + 'aria-label="' + ex.name + ', подход ' + (i + 1) + (unit ? ', ' + unit : '') + '">'
+          + '<option value="">—</option>'
+          + vals.map(v => '<option value="' + v + '"' + (curV !== '' && num(curV) === v ? ' selected' : '') + '>' + String(v).replace('.', ',') + '</option>').join('')
+          + '</select>'
+          + (unit ? '<span class="u">' + unit + '</span>' : '') + '</label>';
+      };
+      h += '<div class="set"><span class="n">' + (i + 1) + '</span>';
+      if(ex.unit === 'sec') h += f('r', 'с');
+      else if(ex.uni) h += f('w', 'кг') + f('rl', '', 'Л') + f('rr', '', 'П');
+      else h += f('w', 'кг') + f('r', 'повт');
+      h += '</div>';
+    }
+    if(last) h += '<button class="ghost" data-fill="' + ex.id + '">Подставить прошлые значения</button>';
+    h += '</section>';
+  });
+
+  h += '<label class="notebox"><span>Заметка о технике: как вела себя правая лопатка, где было тяжело</span>'
+    + '<textarea id="note">' + state.note.replace(/</g, '&lt;') + '</textarea></label>';
+  h += '<div class="bar"><button id="finish">Сохранить тренировку</button></div>';
+  return h;
+}
+
+function historyHTML(){
+  if(!state.sessions.length) return '<div class="empty">Здесь появятся сохранённые тренировки.</div>' + backupHTML();
+  let h = '';
+  state.sessions.slice().reverse().forEach(s => {
+    const p = PROGRAM[s.workout];
+    h += '<div class="hist"><div class="top"><span class="dot ' + s.workout + '"></span>' + p.label
+      + '<span class="when">' + fmtDate(s.date) + '</span></div><ul>';
+    p.ex.forEach(ex => {
+      if(s.data[ex.id]) h += '<li><b>' + ex.name + '</b><span>' + fmtSets(ex, s.data[ex.id]) + '</span></li>';
+    });
+    h += '</ul>';
+    if(s.note) h += '<div class="nt">' + s.note.replace(/</g, '&lt;') + '</div>';
+    h += '<button class="del ' + (state.delArm === s.id ? 'arm' : '') + '" data-del="' + s.id + '">'
+      + (state.delArm === s.id ? 'Нажать ещё раз для удаления' : 'Удалить') + '</button></div>';
+  });
+  return h + backupHTML();
+}
+
+function backupHTML(){
+  return '<div class="hist"><div class="top">Резервная копия</div>'
+    + '<div class="tip" style="margin-top:6px">Скопировать данные и сохранить в заметках телефона. Если записи пропадут, вставить сюда и восстановить.</div>'
+    + '<button class="ghost" data-backup="copy">Скопировать данные</button>'
+    + '<textarea id="restore" placeholder="Вставить копию сюда" style="margin-top:10px"></textarea>'
+    + '<button class="ghost" data-backup="restore">Восстановить из копии</button></div>';
+}
+
+/* actions */
+async function finish(){
+  const data = {};
+  PROGRAM[state.w].ex.forEach(ex => {
+    const arr = [];
+    for(let i = 0; i < setsFor(ex); i++){
+      const s = state.inputs[ex.id] && state.inputs[ex.id][i];
+      if(!s) continue;
+      const ok = ex.uni ? (num(s.rl) || num(s.rr)) : num(s.r);
+      if(ok) arr.push({ ...s });
+    }
+    if(arr.length) data[ex.id] = arr;
+  });
+  if(!Object.keys(data).length){ toast('Внести хотя бы один подход'); return; }
+  state.sessions.push({ id: Date.now(), date: new Date().toISOString(), workout: state.w, data, note: state.note.trim() });
+  PROGRAM[state.w].ex.forEach(ex => { delete state.inputs[ex.id]; });
+  state.note = '';
+  state.w = other(state.w);
+  await sset('sessions', state.sessions);
+  await sset('draft', { inputs: state.inputs, note: '', w: state.w });
+  render();
+  window.scrollTo(0, 0);
+  toast('Тренировка сохранена');
+}
+
+root.addEventListener('input', e => {
+  const t = e.target;
+  if(t.dataset && t.dataset.ex){
+    const a = (state.inputs[t.dataset.ex] = state.inputs[t.dataset.ex] || []);
+    const o = (a[t.dataset.i] = a[t.dataset.i] || {});
+    o[t.dataset.f] = t.value;
+    queueDraft();
+  } else if(t.id === 'note'){
+    state.note = t.value; queueDraft();
+  }
+});
+root.addEventListener('focusin', e => {
+  const t = e.target;
+  if(t.tagName !== 'SELECT' || !t.dataset.ex || t.value !== '') return;
+  const i = Number(t.dataset.i), f = t.dataset.f;
+  const a = state.inputs[t.dataset.ex] || [];
+  const prev = i > 0 && a[i - 1] ? a[i - 1][f] : undefined;
+  const v = (prev !== undefined && prev !== '') ? prev : t.dataset.ph;
+  if(v === '' || v === undefined) return;
+  if(![...t.options].some(o => o.value === String(v))) return;
+  t.value = String(v);
+  const arr = (state.inputs[t.dataset.ex] = state.inputs[t.dataset.ex] || []);
+  (arr[i] = arr[i] || {})[f] = String(v);
+  queueDraft();
+});
+root.addEventListener('change', e => {
+  if(e.target.id === 'intro'){
+    state.intro = e.target.checked;
+    sset('settings', { intro: state.intro });
+    render();
+  }
+});
+root.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  if(b.dataset.view){ state.view = b.dataset.view; state.delArm = null; render(); window.scrollTo(0, 0); }
+  else if(b.dataset.w){ state.w = b.dataset.w; queueDraft(); render(); }
+  else if(b.dataset.fill){
+    const ex = PROGRAM[state.w].ex.find(x => x.id === b.dataset.fill);
+    const last = lastFor(ex.id);
+    if(last){
+      state.inputs[ex.id] = [];
+      for(let i = 0; i < setsFor(ex); i++){
+        const src = last.sets[i] || last.sets[last.sets.length - 1];
+        state.inputs[ex.id][i] = { ...src };
+      }
+      queueDraft(); render();
+    }
+  }
+  else if(b.id === 'finish'){ finish(); }
+  else if(b.dataset.backup === 'copy'){
+    const txt = JSON.stringify({ sessions: state.sessions, intro: state.intro });
+    const ta = document.getElementById('restore');
+    ta.value = txt;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(() => toast('Скопировано'))
+        .catch(() => { ta.select(); toast('Выделить текст и скопировать вручную'); });
+    } else { ta.select(); toast('Выделить текст и скопировать вручную'); }
+  }
+  else if(b.dataset.backup === 'restore'){
+    try{
+      const d = JSON.parse(document.getElementById('restore').value);
+      if(!Array.isArray(d.sessions)) throw new Error('bad');
+      state.sessions = d.sessions;
+      state.intro = !!d.intro;
+      sset('sessions', state.sessions);
+      sset('settings', { intro: state.intro });
+      render();
+      toast('Данные восстановлены');
+    }catch(err){ toast('Не удалось прочитать копию'); }
+  }
+  else if(b.dataset.del){
+    const id = Number(b.dataset.del);
+    if(state.delArm === id){
+      state.sessions = state.sessions.filter(s => s.id !== id);
+      state.delArm = null;
+      sset('sessions', state.sessions);
+    } else state.delArm = id;
+    render();
+  }
+});
+
+/* start */
+(async () => {
+  if(!window.storage && !ls) state.hasStorage = false;
+  const s = await sget('sessions'); if(s) state.sessions = s;
+  const st = await sget('settings'); if(st) state.intro = !!st.intro;
+  const d = await sget('draft');
+  if(d){ state.inputs = d.inputs || {}; state.note = d.note || ''; }
+  if(d && d.w) state.w = d.w;
+  else if(state.sessions.length) state.w = other(state.sessions[state.sessions.length - 1].workout);
+  render();
+})();
+</script>
+</body>
+</html>
