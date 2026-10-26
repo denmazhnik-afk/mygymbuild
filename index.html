@@ -138,7 +138,8 @@ details.opts summary{ padding:14px 0; font-weight:700; cursor:pointer; }
 .bar{ position:fixed; left:0; right:0; bottom:0; z-index:20; padding:10px 16px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(to top, var(--bg) 72%, transparent); }
 .bar > *{ max-width:528px; margin-left:auto; margin-right:auto; }
-.cta{ display:block; width:100%; padding:16px; border-radius:18px; background:var(--accent); color:var(--on); font-weight:800; font-size:17px; }
+.cta{ display:block; width:100%; padding:16px; border-radius:18px; background:var(--accent); color:var(--on); font-weight:800; font-size:17px; transition:background .15s; }
+.cta.arm{ background:var(--B); color:#ffffff; }
 .rest{ position:relative; overflow:hidden; display:flex; align-items:center; justify-content:space-between; gap:10px;
   margin-bottom:10px; padding:12px 14px; border-radius:16px; background:var(--ink); color:var(--bg); font-weight:700; }
 .rest-fill{ position:absolute; left:0; top:0; bottom:0; width:100%; background:var(--accent); opacity:.35; }
@@ -407,13 +408,13 @@ const unitWord = ex => ex.unit === 'sec' ? 'с' : (ex.unit === 'min' ? 'мин' 
 /* ---------- state ---------- */
 const state = {
   view:'train', w:'A', plans:defaultPlans(), custom:[], sessions:[], inputs:{}, note:'',
-  intro:false, rest:90, lastBackup:0, edit:false, hasStorage:true, delArm:null, resetArm:false,
+  intro:false, rest:90, lastBackup:0, edit:false, hasStorage:true, delArm:null, resetArm:false, finArm:false,
   restEnd:0, restDone:false, pk:null
 };
 rebuildLib();
 const $ = s => document.querySelector(s);
 const root = $('#app');
-let draftTimer, toastTimer, restTimer;
+let draftTimer, toastTimer, restTimer, finTimer;
 
 /* ---------- storage: window.storage, then localStorage, then memory ---------- */
 const mem = {};
@@ -594,9 +595,7 @@ function editHTML(items){
   return h;
 }
 
-function updateProgress(){
-  const t = $('#prog-t'), f = $('#prog-f');
-  if(!t || !f) return;
+function getProgress(){
   let total = 0, done = 0;
   planItems().forEach(it => {
     const ex = LIBMAP[it.ex];
@@ -605,8 +604,15 @@ function updateProgress(){
       if(isFilled(ex, state.inputs[ex.id] && state.inputs[ex.id][i])) done++;
     }
   });
+  return { total, done, ratio: total ? done / total : 1 };
+}
+
+function updateProgress(){
+  const t = $('#prog-t'), f = $('#prog-f');
+  if(!t || !f) return;
+  const { total, done, ratio } = getProgress();
   t.textContent = 'Выполнено ' + done + ' из ' + total + ' подходов';
-  f.style.width = (total ? Math.round(done / total * 100) : 0) + '%';
+  f.style.width = Math.round(ratio * 100) + '%';
 }
 
 function backupBlock(){
@@ -653,7 +659,13 @@ function renderBar(){
   let h = '';
   if(state.view === 'train'){
     if(state.restEnd) h += '<div class="rest" id="rest"><div class="rest-fill" id="rest-fill"></div><span>Отдых</span><span class="t" id="rest-t"></span><button data-act="rest-skip">Пропустить</button></div>';
-    h += state.edit ? '<button class="cta" data-act="edit">Готово</button>' : '<button class="cta" data-act="finish">Сохранить тренировку</button>';
+    if(state.edit){
+      h += '<button class="cta" data-act="edit">Готово</button>';
+    } else {
+      const { total, done } = getProgress();
+      const label = state.finArm ? 'Выполнено ' + done + ' из ' + total + ' — нажать ещё раз' : 'Сохранить тренировку';
+      h += '<button class="cta ' + (state.finArm ? 'arm' : '') + '" data-act="finish">' + label + '</button>';
+    }
   }
   $('#bar').innerHTML = h ? '<div class="bar">' + h + '</div>' : '';
   if(state.restEnd) tickRest();
@@ -819,6 +831,30 @@ async function finish(){
     }
     if(arr.length) data[ex.id] = arr;
   });
+  if(!Object.keys(data).length){ toast('Внести хотя бы один подход'); return; }
+
+  /* Проверка на 80% выполнения */
+  const { ratio } = getProgress();
+  if(ratio < 0.8 && !state.finArm){
+    state.finArm = true;
+    renderBar();
+    clearTimeout(finTimer);
+    finTimer = setTimeout(() => { state.finArm = false; renderBar(); }, 3500);
+    return;
+  }
+  state.finArm = false;
+  clearTimeout(finTimer);
+
+  state.sessions.push({ id:Date.now(), date:new Date().toISOString(), workout:state.w, data, note:state.note.trim() });
+  planItems().forEach(it => { delete state.inputs[it.ex]; });
+  state.note = '';
+  stopRest();
+  if(state.w === 'A') state.w = 'B'; else if(state.w === 'B') state.w = 'A';
+  await sset('sessions', state.sessions);
+  await sset('draft', { inputs:state.inputs, note:'', w:state.w });
+  render(false);
+  toast('Тренировка записана. Копии пока нет');
+}
   if(!Object.keys(data).length){ toast('Внести хотя бы один подход'); return; }
   state.sessions.push({ id:Date.now(), date:new Date().toISOString(), workout:state.w, data, note:state.note.trim() });
   planItems().forEach(it => { delete state.inputs[it.ex]; });
