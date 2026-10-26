@@ -613,6 +613,7 @@ function updateProgress(){
   const { total, done, ratio } = getProgress();
   t.textContent = 'Выполнено ' + done + ' из ' + total + ' подходов';
   f.style.width = Math.round(ratio * 100) + '%';
+  if(state.finArm){ state.finArm = false; clearTimeout(finTimer); renderBar(); }
 }
 
 function backupBlock(){
@@ -855,17 +856,7 @@ async function finish(){
   render(false);
   toast('Тренировка записана. Копии пока нет');
 }
-  if(!Object.keys(data).length){ toast('Внести хотя бы один подход'); return; }
-  state.sessions.push({ id:Date.now(), date:new Date().toISOString(), workout:state.w, data, note:state.note.trim() });
-  planItems().forEach(it => { delete state.inputs[it.ex]; });
-  state.note = '';
-  stopRest();
-  if(state.w === 'A') state.w = 'B'; else if(state.w === 'B') state.w = 'A';
-  await sset('sessions', state.sessions);
-  await sset('draft', { inputs:state.inputs, note:'', w:state.w });
-  render(false);
-  toast('Тренировка записана. Копии пока нет');
-}
+
 function toggleDone(exId, i){
   const ex = LIBMAP[exId];
   const arr = (state.inputs[exId] = state.inputs[exId] || []);
@@ -934,9 +925,9 @@ document.addEventListener('click', e => {
   const b = e.target.closest('button');
   if(!b) return;
   const d = b.dataset;
-  if(d.view){ state.view = d.view; state.delArm = null; state.edit = false; render(false); }
-  else if(d.w){ state.w = d.w; state.edit = false; state.resetArm = false; queueDraft(); render(false); }
-  else if(d.act === 'edit'){ state.edit = !state.edit; state.resetArm = false; render(false); }
+  if(d.view){ state.view = d.view; state.delArm = null; state.finArm = false; state.edit = false; render(false); }
+  else if(d.w){ state.w = d.w; state.edit = false; state.resetArm = false; state.finArm = false; queueDraft(); render(false); }
+  else if(d.act === 'edit'){ state.edit = !state.edit; state.resetArm = false; state.finArm = false; render(false); }
   else if(d.act === 'add'){ openPicker(); }
   else if(d.act === 'finish'){ finish(); }
   else if(d.act === 'rest-skip'){ stopRest(); }
