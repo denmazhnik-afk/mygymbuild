@@ -53,6 +53,13 @@ h1,h2,h3{ margin:0; }
 .nav button{ padding:7px 12px; border-radius:9px; font-size:14px; font-weight:600; color:var(--muted); }
 .nav button.on{ background:var(--surface); color:var(--ink); box-shadow:var(--shadow); }
 
+/* week */
+.wk{ display:flex; align-items:center; gap:10px; margin-bottom:14px; font-size:14px; color:var(--muted); }
+.wk-d{ display:flex; gap:6px; }
+.wk-d i{ width:12px; height:12px; border-radius:50%; border:2px solid var(--line); }
+.wk-d i.on{ background:var(--accent); border-color:var(--accent); }
+.wk b{ margin-left:auto; color:var(--ink); font-weight:700; }
+
 /* workout switch */
 .seg{ display:grid; grid-template-columns:1fr 1fr 1.5fr; gap:8px; margin-bottom:16px; }
 .segb{ display:flex; align-items:center; justify-content:center; gap:8px; padding:13px 8px; border-radius:16px;
@@ -97,6 +104,7 @@ select{
 }
 .set.filled select{ background:var(--surface); }
 select:disabled{ opacity:.5; }
+select.auto{ color:var(--muted); font-weight:600; }
 .chk{ width:44px; height:44px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center; color:transparent; }
 .chk.on{ background:var(--accent); border-color:var(--accent); color:var(--on); }
 .ghost{ margin-top:10px; padding:9px 12px; border-radius:10px; background:var(--raised); font-size:14px; font-weight:600; color:var(--muted); }
@@ -139,7 +147,7 @@ details.opts summary{ padding:14px 0; font-weight:700; cursor:pointer; }
   background:linear-gradient(to top, var(--bg) 72%, transparent); }
 .bar > *{ max-width:528px; margin-left:auto; margin-right:auto; }
 .cta{ display:block; width:100%; padding:16px; border-radius:18px; background:var(--accent); color:var(--on); font-weight:800; font-size:17px; transition:background .15s; }
-.cta.arm{ background:var(--B); color:#ffffff; }
+.cta.arm{ background:var(--warn); color:var(--on); }
 .rest{ position:relative; overflow:hidden; display:flex; align-items:center; justify-content:space-between; gap:10px;
   margin-bottom:10px; padding:12px 14px; border-radius:16px; background:var(--ink); color:var(--bg); font-weight:700; }
 .rest-fill{ position:absolute; left:0; top:0; bottom:0; width:100%; background:var(--accent); opacity:.35; }
@@ -408,7 +416,7 @@ const unitWord = ex => ex.unit === 'sec' ? 'с' : (ex.unit === 'min' ? 'мин' 
 /* ---------- state ---------- */
 const state = {
   view:'train', w:'A', plans:defaultPlans(), custom:[], sessions:[], inputs:{}, note:'',
-  intro:false, rest:90, lastBackup:0, edit:false, hasStorage:true, delArm:null, resetArm:false, finArm:false,
+  intro:false, rest:90, lastBackup:0, goal:3, edit:false, hasStorage:true, delArm:null, resetArm:false, finArm:false,
   restEnd:0, restDone:false, pk:null
 };
 rebuildLib();
@@ -432,7 +440,7 @@ async function sset(k, v){
   if(ls){ try{ ls.setItem(KEY(k), JSON.stringify(v)); }catch(e){ console.error(e); } }
 }
 const queueDraft = () => { clearTimeout(draftTimer); draftTimer = setTimeout(() => sset('draft', { inputs:state.inputs, note:state.note, w:state.w }), 400); };
-const saveSettings = () => sset('settings', { intro:state.intro, rest:state.rest, lastBackup:state.lastBackup });
+const saveSettings = () => sset('settings', { intro:state.intro, rest:state.rest, lastBackup:state.lastBackup, goal:state.goal });
 const savePlans = () => sset('plans', state.plans);
 
 /* ---------- helpers ---------- */
@@ -449,7 +457,8 @@ const SECS = []; for(let v = 5; v <= 180; v += 5) SECS.push(v);
 const MINS = []; for(let v = 1; v <= 90; v++) MINS.push(v);
 const listFor = (ex, f) => f === 'w' ? WEIGHTS : (ex.unit === 'sec' ? SECS : (ex.unit === 'min' ? MINS : REPS));
 const fieldsOf = ex => ex.noWeight ? ['r'] : (ex.uni ? ['w','rl','rr'] : ['w','r']);
-const isFilled = (ex, s) => !!s && (ex.uni ? (num(s.rl) > 0 || num(s.rr) > 0) : num(s.r) > 0);
+const confirmed = (s, f) => num(s[f]) > 0 && (!!s.done || !(s.a && s.a[f]));
+const isFilled = (ex, s) => !!s && (ex.uni ? (confirmed(s, 'rl') || confirmed(s, 'rr')) : confirmed(s, 'r'));
 
 function lastFor(exId){
   for(let i = state.sessions.length - 1; i >= 0; i--){
@@ -505,9 +514,9 @@ function render(keepScroll = true){
   let h = '<div class="top"><h1>Журнал</h1><div class="nav" role="tablist">'
     + '<button class="' + (state.view === 'train' ? 'on' : '') + '" data-view="train">Тренировка</button>'
     + '<button class="' + (state.view === 'history' ? 'on' : '') + '" data-view="history">История</button></div></div>';
-  if(state.view === 'train' && unsavedCount()){
-    const n = unsavedCount();
-    h += '<div class="notice">Копия не сохранена: ' + n + ' ' + plural(n, 'тренировка', 'тренировки', 'тренировок') + ' только на этом телефоне. <button class="inl" data-backup="file">Сохранить в файл</button></div>';
+  const ut = unsavedText();
+  if(state.view === 'train' && ut){
+    h += '<div class="notice">' + ut + ' <button class="inl" data-backup="file">Сохранить в файл</button></div>';
   }
   if(!state.hasStorage) h += '<div class="notice">Сохранение недоступно: записи останутся только до закрытия страницы. Во вкладке «История» есть резервная копия.</div>';
   h += state.view === 'train' ? trainHTML() : historyHTML();
@@ -517,9 +526,23 @@ function render(keepScroll = true){
   window.scrollTo(0, keepScroll ? y : 0);
 }
 
+const DAY = 86400000;
+function weekStart(){
+  const n = new Date(), x = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  x.setDate(x.getDate() - (x.getDay() + 6) % 7);
+  return x.getTime();
+}
+function weekCount(){ const ws = weekStart(); return state.sessions.filter(x => new Date(x.date).getTime() >= ws).length; }
+function weekHTML(){
+  const n = weekCount(), g = state.goal;
+  let dots = '';
+  for(let i = 0; i < Math.max(g, n); i++) dots += '<i class="' + (i < n ? 'on' : '') + '"></i>';
+  return '<div class="wk"><span class="wk-t">На этой неделе</span><span class="wk-d">' + dots + '</span><b>' + (n >= g ? 'цель выполнена' : n + ' из ' + g) + '</b></div>';
+}
+
 function trainHTML(){
   const items = planItems();
-  let h = '<div class="seg">' + ['A','B','M'].map(k =>
+  let h = weekHTML() + '<div class="seg">' + ['A','B','M'].map(k =>
     '<button class="segb ' + (k === state.w ? 'on' : '') + '" data-w="' + k + '" aria-label="' + LABELS[k] + '"><span class="dot"></span>' + (k === 'M' ? 'Моя' : (k === 'A' ? 'А' : 'Б')) + '</button>'
   ).join('') + '</div>';
   h += '<div class="title-row"><h2>' + LABELS[state.w] + '</h2><button class="pill" data-act="edit">' + IC.edit + (state.edit ? 'Готово' : 'Изменить') + '</button></div>';
@@ -553,7 +576,7 @@ function doHTML(items){
         const curV = cur[f] ?? '';
         const vals = listFor(ex, f).slice();
         if(curV !== '' && num(curV) > 0 && !vals.includes(num(curV))){ vals.push(num(curV)); vals.sort((a, b) => a - b); }
-        h += '<select data-ex="' + ex.id + '" data-i="' + i + '" data-f="' + f + '" aria-label="' + esc(ex.name) + ', подход ' + (i + 1) + '">'
+        h += '<select ' + (cur.a && cur.a[f] && !cur.done ? 'class="auto" ' : '') + 'data-ex="' + ex.id + '" data-i="' + i + '" data-f="' + f + '" aria-label="' + esc(ex.name) + ', подход ' + (i + 1) + '">'
           + '<option value="">—</option>'
           + vals.map(v => '<option value="' + v + '"' + (curV !== '' && num(curV) === v ? ' selected' : '') + '>' + fmtN(v) + '</option>').join('')
           + '</select>';
@@ -569,6 +592,9 @@ function doHTML(items){
     + '<div class="optrow"><label for="intro">Вводные недели: по 2 подхода</label><input type="checkbox" id="intro" ' + (state.intro ? 'checked' : '') + '></div>'
     + '<div class="optrow"><label for="restsel">Отдых между подходами</label><select id="restsel">'
     + [45, 60, 90, 120, 150, 180].map(v => '<option value="' + v + '"' + (v === state.rest ? ' selected' : '') + '>' + v + ' с</option>').join('')
+    + '</select></div>'
+    + '<div class="optrow"><label for="goalsel">Тренировок в неделю</label><select id="goalsel">'
+    + [1, 2, 3, 4, 5, 6].map(v => '<option value="' + v + '"' + (v === state.goal ? ' selected' : '') + '>' + v + '</option>').join('')
     + '</select></div></details>';
   return h;
 }
@@ -617,9 +643,9 @@ function updateProgress(){
 }
 
 function backupBlock(){
-  const n = unsavedCount();
-  const status = n
-    ? '<div class="warnline">Копия не сохранена: ' + n + ' ' + plural(n, 'тренировка', 'тренировки', 'тренировок') + ' только на этом телефоне.</div>'
+  const ut = unsavedText();
+  const status = ut
+    ? '<div class="warnline">' + ut + '</div>'
     : '<div class="okline">Все тренировки в копии.' + (state.lastBackup ? ' Последнее сохранение: ' + fmtDate(new Date(state.lastBackup).toISOString()) : '') + '</div>';
   return '<div class="hist backup"><div class="hd">Резервная копия</div>' + status
     + '<div class="sum">В файле хранятся тренировки, история, свои упражнения и настройки.</div>'
@@ -664,7 +690,7 @@ function renderBar(){
       h += '<button class="cta" data-act="edit">Готово</button>';
     } else {
       const { total, done } = getProgress();
-      const label = state.finArm ? 'Выполнено ' + done + ' из ' + total + ' — нажать ещё раз' : 'Сохранить тренировку';
+      const label = state.finArm ? 'Выполнено ' + done + ' из ' + total + ': нажать ещё раз' : 'Сохранить тренировку';
       h += '<button class="cta ' + (state.finArm ? 'arm' : '') + '" data-act="finish">' + label + '</button>';
     }
   }
@@ -776,8 +802,13 @@ function createCustom(){
   toast('Упражнение добавлено');
 }
 
+
 /* ---------- backup ---------- */
 function unsavedCount(){ return state.sessions.filter(x => x.id > state.lastBackup).length; }
+function unsavedText(){
+  const n = unsavedCount();
+  return n ? 'Копия не сохранена: ' + n + ' ' + plural(n, 'тренировка', 'тренировки', 'тренировок') + ' только на этом телефоне.' : '';
+}
 function plural(n, one, few, many){
   const m10 = n % 10, m100 = n % 100;
   if(m10 === 1 && m100 !== 11) return one;
@@ -785,7 +816,7 @@ function plural(n, one, few, many){
   return many;
 }
 function backupData(){
-  return { app:'trener', version:2, exported:new Date().toISOString(), sessions:state.sessions, plans:state.plans, custom:state.custom, intro:state.intro, rest:state.rest };
+  return { app:'trener', version:2, exported:new Date().toISOString(), sessions:state.sessions, plans:state.plans, custom:state.custom, goal:state.goal, intro:state.intro, rest:state.rest };
 }
 function markBackup(){ state.lastBackup = Date.now(); saveSettings(); }
 function applyBackup(text){
@@ -795,6 +826,7 @@ function applyBackup(text){
     state.sessions = x.sessions;
     if(x.plans && x.plans.A && x.plans.B && x.plans.M) state.plans = x.plans;
     if(Array.isArray(x.custom)) state.custom = x.custom;
+    if(x.goal) state.goal = x.goal;
     state.intro = !!x.intro; if(x.rest) state.rest = x.rest;
     state.lastBackup = Date.now();
     rebuildLib(); migrate();
@@ -828,13 +860,13 @@ async function finish(){
     const ex = LIBMAP[it.ex], arr = [];
     for(let i = 0; i < setsFor(it); i++){
       const s = state.inputs[ex.id] && state.inputs[ex.id][i];
-      if(isFilled(ex, s)){ const c = { ...s }; delete c.done; arr.push(c); }
+      if(isFilled(ex, s)){ const c = { ...s }; delete c.done; delete c.a; arr.push(c); }
     }
     if(arr.length) data[ex.id] = arr;
   });
   if(!Object.keys(data).length){ toast('Внести хотя бы один подход'); return; }
 
-  /* Проверка на 80% выполнения */
+  /* защита от случайного завершения: меньше 80% подходов, нужно нажать ещё раз */
   const { ratio } = getProgress();
   if(ratio < 0.8 && !state.finArm){
     state.finArm = true;
@@ -845,7 +877,6 @@ async function finish(){
   }
   state.finArm = false;
   clearTimeout(finTimer);
-
   state.sessions.push({ id:Date.now(), date:new Date().toISOString(), workout:state.w, data, note:state.note.trim() });
   planItems().forEach(it => { delete state.inputs[it.ex]; });
   state.note = '';
@@ -856,14 +887,15 @@ async function finish(){
   render(false);
   toast('Тренировка записана. Копии пока нет');
 }
-
 function toggleDone(exId, i){
   const ex = LIBMAP[exId];
   const arr = (state.inputs[exId] = state.inputs[exId] || []);
   const s = (arr[i] = arr[i] || {});
   if(!s.done){
     fieldsOf(ex).forEach(f => { if(s[f] === undefined || s[f] === '') s[f] = defaultFor(exId, i, f); });
-    if(!isFilled(ex, s)){ toast('Сначала выберите повторения'); return; }
+    const hasReps = ex.uni ? (num(s.rl) > 0 || num(s.rr) > 0) : num(s.r) > 0;
+    if(!hasReps){ toast('Сначала выберите повторения'); return; }
+    s.a = {};
     s.done = true;
     startRest();
   } else s.done = false;
@@ -878,6 +910,8 @@ document.addEventListener('input', e => {
     const a = (state.inputs[t.dataset.ex] = state.inputs[t.dataset.ex] || []);
     const o = (a[t.dataset.i] = a[t.dataset.i] || {});
     o[t.dataset.f] = t.value;
+    if(o.a) delete o.a[t.dataset.f];
+    t.classList.remove('auto');
     const row = t.closest('.set');
     if(row) row.classList.toggle('filled', isFilled(LIBMAP[t.dataset.ex], o));
     updateProgress(); queueDraft();
@@ -893,6 +927,8 @@ document.addEventListener('focusin', e => {
   const arr = (state.inputs[t.dataset.ex] = state.inputs[t.dataset.ex] || []);
   const o = (arr[t.dataset.i] = arr[t.dataset.i] || {});
   o[t.dataset.f] = v;
+  (o.a = o.a || {})[t.dataset.f] = 1;
+  t.classList.add('auto');
   const row = t.closest('.set');
   if(row) row.classList.toggle('filled', isFilled(LIBMAP[t.dataset.ex], o));
   updateProgress(); queueDraft();
@@ -906,6 +942,7 @@ document.addEventListener('change', e => {
     t.value = '';
   }
   else if(t.id === 'restsel'){ state.rest = Number(t.value); saveSettings(); }
+  else if(t.id === 'goalsel'){ state.goal = Number(t.value); saveSettings(); const w = $('.wk'); if(w) w.outerHTML = weekHTML(); }
   else if(t.dataset && t.dataset.rng !== undefined){
     const it = planItems()[Number(t.dataset.rng)];
     const [lo, hi] = t.value.split('-').map(Number);
@@ -1001,7 +1038,7 @@ function migrate(){
   const s = await sget('sessions'); if(s) state.sessions = s;
   const c = await sget('custom'); if(c) state.custom = c;
   const p = await sget('plans'); if(p && p.A && p.B && p.M) state.plans = p;
-  const st = await sget('settings'); if(st){ state.intro = !!st.intro; if(st.rest) state.rest = st.rest; if(st.lastBackup) state.lastBackup = st.lastBackup; }
+  const st = await sget('settings'); if(st){ state.intro = !!st.intro; if(st.rest) state.rest = st.rest; if(st.lastBackup) state.lastBackup = st.lastBackup; if(st.goal) state.goal = st.goal; }
   const d = await sget('draft');
   if(d){ state.inputs = d.inputs || {}; state.note = d.note || ''; }
   rebuildLib();
