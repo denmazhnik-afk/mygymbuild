@@ -114,6 +114,11 @@ details.how summary::-webkit-details-marker{ display:none; }
 details.how summary::after{ content:" ▾"; }
 details.how[open] summary::after{ content:" ▴"; }
 details.how p{ margin:6px 0 0; }
+.lrow{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.lnk{ display:inline-block; padding:9px 13px; border-radius:10px; background:var(--tint); color:var(--accent); font-weight:700; font-size:14px; text-decoration:none; }
+.linkin{ display:flex; gap:8px; margin-top:10px; }
+.linkin input{ flex:1; min-width:0; padding:10px 12px; font:inherit; font-size:16px; color:var(--ink); background:var(--raised); border:0; border-radius:10px; }
+.linkin .ghost{ margin-top:0; flex:none; }
 
 /* edit mode */
 .ecard{ background:var(--surface); border-radius:18px; padding:14px; margin-bottom:10px; box-shadow:var(--shadow); border:1px solid var(--line); }
@@ -416,7 +421,7 @@ const unitWord = ex => ex.unit === 'sec' ? 'с' : (ex.unit === 'min' ? 'мин' 
 /* ---------- state ---------- */
 const state = {
   view:'train', w:'A', plans:defaultPlans(), custom:[], sessions:[], inputs:{}, note:'',
-  intro:false, rest:90, lastBackup:0, goal:3, edit:false, hasStorage:true, delArm:null, resetArm:false, finArm:false,
+  intro:false, rest:90, lastBackup:0, goal:3, links:{}, openHow:'', edit:false, hasStorage:true, delArm:null, resetArm:false, finArm:false,
   restEnd:0, restDone:false, pk:null
 };
 rebuildLib();
@@ -584,7 +589,7 @@ function doHTML(items){
       h += '<button class="chk ' + (cur.done ? 'on' : '') + '" data-done="' + ex.id + ':' + i + '" aria-label="Подход ' + (i + 1) + ' выполнен" aria-pressed="' + (!!cur.done) + '">' + IC.check + '</button></div>';
     }
     if(last) h += '<button class="ghost" data-fill="' + ex.id + '">Подставить прошлые значения</button>';
-    if(ex.tip) h += '<details class="how"><summary>Как делать</summary><p>' + esc(ex.tip) + '</p></details>';
+    h += howHTML(ex);
     h += '</section>';
   });
   h += '<label class="notebox"><span>Заметка о технике: как вела себя правая лопатка, где было тяжело</span><textarea id="note">' + esc(state.note) + '</textarea></label>';
@@ -723,6 +728,45 @@ function tickRest(){
   f.style.width = Math.max(0, Math.min(100, left / state.rest * 100)) + '%';
 }
 
+
+/* ---------- how to: TikTok search + own link ---------- */
+const tiktokUrl = ex => 'https://www.tiktok.com/search?q=' + encodeURIComponent(ex.name + ' техника');
+function cleanUrl(raw){
+  let v = String(raw || '').trim();
+  if(!v) return '';
+  if(!/^[a-z][a-z0-9+.-]*:/i.test(v)) v = 'https://' + v;
+  try{
+    const u = new URL(v);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname.includes('.') ? u.href : '';
+  }catch(e){ return ''; }
+}
+function howHTML(ex){
+  const link = state.links[ex.id] || '';
+  let h = '<details class="how"' + (state.openHow === ex.id ? ' open' : '') + '><summary>Как делать</summary>';
+  if(ex.tip) h += '<p>' + esc(ex.tip) + '</p>';
+  h += '<div class="lrow"><a class="lnk" href="' + esc(tiktokUrl(ex)) + '" target="_blank" rel="noopener noreferrer">Искать в TikTok</a>';
+  if(link) h += '<a class="lnk" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">Моё видео</a>';
+  h += '</div><div class="linkin"><input type="url" inputmode="url" autocapitalize="off" autocomplete="off" data-lk="' + ex.id + '" placeholder="Вставить свою ссылку" value="' + esc(link) + '">'
+    + '<button class="ghost" data-linksave="' + ex.id + '">Сохранить</button>'
+    + (link ? '<button class="ghost" data-linkdel="' + ex.id + '">Убрать</button>' : '') + '</div></details>';
+  return h;
+}
+function saveLink(id){
+  const inp = document.querySelector('input[data-lk="' + id + '"]');
+  const raw = inp ? inp.value : '';
+  if(!raw.trim()){ delLink(id); return; }
+  const u = cleanUrl(raw);
+  if(!u){ toast('Не похоже на ссылку'); return; }
+  state.links[id] = u; state.openHow = id;
+  sset('links', state.links);
+  render(); toast('Ссылка сохранена');
+}
+function delLink(id){
+  delete state.links[id]; state.openHow = id;
+  sset('links', state.links);
+  render(); toast('Ссылка убрана');
+}
+
 /* ---------- exercise picker (bottom sheet) ---------- */
 function openPicker(){
   state.pk = { q:'', g:'Все', e:'Все', form:false };
@@ -816,7 +860,7 @@ function plural(n, one, few, many){
   return many;
 }
 function backupData(){
-  return { app:'trener', version:2, exported:new Date().toISOString(), sessions:state.sessions, plans:state.plans, custom:state.custom, goal:state.goal, intro:state.intro, rest:state.rest };
+  return { app:'trener', version:2, exported:new Date().toISOString(), sessions:state.sessions, plans:state.plans, custom:state.custom, links:state.links, goal:state.goal, intro:state.intro, rest:state.rest };
 }
 function markBackup(){ state.lastBackup = Date.now(); saveSettings(); }
 function applyBackup(text){
@@ -826,6 +870,7 @@ function applyBackup(text){
     state.sessions = x.sessions;
     if(x.plans && x.plans.A && x.plans.B && x.plans.M) state.plans = x.plans;
     if(Array.isArray(x.custom)) state.custom = x.custom;
+    if(x.links && typeof x.links === 'object'){ state.links = x.links; sset('links', state.links); }
     if(x.goal) state.goal = x.goal;
     state.intro = !!x.intro; if(x.rest) state.rest = x.rest;
     state.lastBackup = Date.now();
@@ -963,11 +1008,13 @@ document.addEventListener('click', e => {
   if(!b) return;
   const d = b.dataset;
   if(d.view){ state.view = d.view; state.delArm = null; state.finArm = false; state.edit = false; render(false); }
-  else if(d.w){ state.w = d.w; state.edit = false; state.resetArm = false; state.finArm = false; queueDraft(); render(false); }
+  else if(d.w){ state.w = d.w; state.openHow = ''; state.edit = false; state.resetArm = false; state.finArm = false; queueDraft(); render(false); }
   else if(d.act === 'edit'){ state.edit = !state.edit; state.resetArm = false; state.finArm = false; render(false); }
   else if(d.act === 'add'){ openPicker(); }
   else if(d.act === 'finish'){ finish(); }
   else if(d.act === 'rest-skip'){ stopRest(); }
+  else if(d.linksave){ saveLink(d.linksave); }
+  else if(d.linkdel){ delLink(d.linkdel); }
   else if(d.act === 'reset'){
     if(state.resetArm){ state.plans[state.w] = defaultPlans()[state.w]; state.resetArm = false; savePlans(); toast('Набор восстановлен'); }
     else state.resetArm = true;
@@ -1037,6 +1084,7 @@ function migrate(){
   if(!window.storage && !ls) state.hasStorage = false;
   const s = await sget('sessions'); if(s) state.sessions = s;
   const c = await sget('custom'); if(c) state.custom = c;
+  const lk = await sget('links'); if(lk && typeof lk === 'object') state.links = lk;
   const p = await sget('plans'); if(p && p.A && p.B && p.M) state.plans = p;
   const st = await sget('settings'); if(st){ state.intro = !!st.intro; if(st.rest) state.rest = st.rest; if(st.lastBackup) state.lastBackup = st.lastBackup; if(st.goal) state.goal = st.goal; }
   const d = await sget('draft');
