@@ -116,6 +116,7 @@ details.how[open] summary::after{ content:" ▴"; }
 details.how p{ margin:6px 0 0; }
 .lrow{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
 .lnk{ display:inline-block; padding:9px 13px; border-radius:10px; background:var(--tint); color:var(--accent); font-weight:700; font-size:14px; text-decoration:none; }
+.lnk.alt{ background:var(--raised); color:var(--muted); font-weight:600; }
 .linkin{ display:flex; gap:8px; margin-top:10px; }
 .linkin input{ flex:1; min-width:0; padding:10px 12px; font:inherit; font-size:16px; color:var(--ink); background:var(--raised); border:0; border-radius:10px; }
 .linkin .ghost{ margin-top:0; flex:none; }
@@ -744,12 +745,24 @@ function howHTML(ex){
   const link = state.links[ex.id] || '';
   let h = '<details class="how"' + (state.openHow === ex.id ? ' open' : '') + '><summary>Как делать</summary>';
   if(ex.tip) h += '<p>' + esc(ex.tip) + '</p>';
-  h += '<div class="lrow"><a class="lnk" href="' + esc(tiktokUrl(ex)) + '" target="_blank" rel="noopener noreferrer">Искать в TikTok</a>';
+  h += '<div class="lrow"><button class="lnk" data-tt="' + ex.id + '">Открыть TikTok</button>'
+    + '<a class="lnk alt" href="' + esc(tiktokUrl(ex)) + '" target="_blank" rel="noopener noreferrer">Поиск в браузере</a>';
   if(link) h += '<a class="lnk" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">Моё видео</a>';
   h += '</div><div class="linkin"><input type="url" inputmode="url" autocapitalize="off" autocomplete="off" data-lk="' + ex.id + '" placeholder="Вставить свою ссылку" value="' + esc(link) + '">'
     + '<button class="ghost" data-linksave="' + ex.id + '">Сохранить</button>'
     + (link ? '<button class="ghost" data-linkdel="' + ex.id + '">Убрать</button>' : '') + '</div></details>';
   return h;
+}
+/* TikTok has no documented link that opens its app search with text in it.
+   So the search words are copied, then the app is opened by its own scheme: paste into the search field. */
+function openTikTok(id){
+  const ex = LIBMAP[id]; if(!ex) return;
+  const q = ex.name + ' техника';
+  const go = () => { try{ window.location.href = 'snssdk1233://'; }catch(e){} };
+  toast('Скопировано: «' + q + '». Вставьте в поиск TikTok');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(q).then(go, go);
+  } else go();
 }
 function saveLink(id){
   const inp = document.querySelector('input[data-lk="' + id + '"]');
@@ -1013,6 +1026,7 @@ document.addEventListener('click', e => {
   else if(d.act === 'add'){ openPicker(); }
   else if(d.act === 'finish'){ finish(); }
   else if(d.act === 'rest-skip'){ stopRest(); }
+  else if(d.tt){ openTikTok(d.tt); }
   else if(d.linksave){ saveLink(d.linksave); }
   else if(d.linkdel){ delLink(d.linkdel); }
   else if(d.act === 'reset'){
